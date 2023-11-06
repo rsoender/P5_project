@@ -13,35 +13,42 @@ load("/Users/rasmus/Library/CloudStorage/OneDrive-AalborgUniversitet/P5/P5 r/hom
 home <- homedata
 
 # Cleaning
-home_cleaned <- subset(home[home$SagsStatus %in% c("Solgt", "Endelig handel") & home$DWID_Projektsalg == "Nej" & !home$EjdType %in% c("Fritidsgrund", "Fritidshus", "Helårsgrund"),], select = -c(Dato_AktuelUdbudPris, Ejd_AntalSoveVaerelser, Ejd_Ombygningsaar, Areal_Bolig_Commercial, Ejd_Opfoerelsesaar), !is.na(Pris_Salg))
+home_flat <- subset(home, (SagsStatus == "Solgt" | SagsStatus == "Endelig handel") & DWID_Projektsalg == "Nej" & EjdType == "Ejerlejlighed" & Postnr %in% c(9000, 8000, 5000, c(1050:2450)) & !is.na(Pris_Salg), select = c(Beloeb_EjerUdgift, Pris_EjdVurdering, Pris_Salg, AntalFremvisninger, AntalStatusmoederSaelger, Sag_AnnonceretNettet, Areal_Bolig, Areal_Bolig_Commercial, Adresse_Etage, Areal_GarageCarport, Areal_Grund, Areal_Kaelder, Ejd_Altan, Ejd_AntalRum, Ejd_Energimaerke, Salgstid, Salgsmaaned, Dist_skole, Alder, Hoejhus, Dist_raadhus, Sogn, corona, GisX_Wgs84, GisY_Wgs84))
 
-# Cleaning RegionNavn ukendt
-home_cleaned <- home_cleaned[!home_cleaned$RegionNavn == "Ukendt",]
+colSums(is.na(home_flat))
+summary(home_flat$Dist_raadhus)
+table(home_flat$Sogn)
+
+home_flat <- home_flat %>%
+  group_by(Sogn) %>%
+  filter(n() > 10) %>%
+  ungroup()
+
+nrow(home_flat)
+
+# Cleaning Beloeb_EjerUdgift
+home_flat$Beloeb_EjerUdgift <- abs(home_flat$Beloeb_EjerUdgift)
+
+# Cleaning Areal_Bolig_Commercial
+home_flat$Areal_Bolig_Commercial <- abs(home_flat$Areal_Bolig_Commercial)
 
 # Cleaning floor number
-home_cleaned$Adresse_Etage <- ifelse(
-  is.na(home_cleaned$Adresse_Etage) | grepl("(st.|ST|0|NULL)", home_cleaned$Adresse_Etage), 
+home_flat$Adresse_Etage <- ifelse(
+  is.na(home_flat$Adresse_Etage) | grepl("(st.|ST|0|NULL)", home_flat$Adresse_Etage), 
   1, 
-  home_cleaned$Adresse_Etage
+  home_flat$Adresse_Etage
 )
 
-home_cleaned$Adresse_Etage <- gsub("(kld.|kl)", 0, gsub("3.", 3, home_cleaned$Adresse_Etage))
+home_flat$Adresse_Etage <- gsub("(kld.|kl)", 0, gsub("3.", 3, home_flat$Adresse_Etage))
 
-# Test
-table(home_cleaned$KommuneNavn)
-
-colSums(is.na(home))
-
-table(home_cleaned$SagsType)
-
-# Flats only
-home_flat <- home_cleaned[home_cleaned$EjdType == "Ejerlejlighed", ]
+# Changing NAs to 0.
+home_flat <- home_flat %>% mutate(across(c(AntalFremvisninger, AntalStatusmoederSaelger, Areal_Bolig_Commercial, Areal_GarageCarport, Areal_Grund, Areal_Kaelder), ~ifelse(is.na(.), 0, .))) 
 
 # Area definitions
-home_aalborg <- home_cleaned[home_cleaned$Postnr == 9000,]
-home_aarhus <- home_cleaned[home_cleaned$Postnr == 8000,]
-home_odense <- home_cleaned[home_cleaned$Postnr == 5000,]
-home_copenhagen <- home_cleaned[home_cleaned$Postnr %in% c(1051:2450),] %>% mutate(Bynavn = "København C")# 1473 or 2450
+home_aalborg <- home[home$Postnr == 9000,]
+home_aarhus <- home[home$Postnr == 8000,]
+home_odense <- home[home$Postnr == 5000,]
+home_copenhagen <- home[home$Postnr %in% c(1050:2450),] %>% mutate(Bynavn = "København C")# 1473 or 2450
 
 # Map plot
 # Aalborg
@@ -60,5 +67,7 @@ mapview(home_odense, map.types = "OpenStreetMap")
 home_copenhagen <- st_as_sf(home_copenhagen, coords = c("GisX_Wgs84", "GisY_Wgs84"), crs = 4269)
 mapview(home_copenhagen, map.types = "OpenStreetMap")
 
-# Using only flats
-home_flat <- home_cleaned[home_cleaned$EjdType == "Ejerlejlighed", ]
+# Test
+summary(lm(Pris_Salg ~ Beloeb_EjerUdgift + Pris_EjdVurdering + AntalFremvisninger + AntalStatusmoederSaelger + Sag_AnnonceretNettet + Areal_Bolig + Areal_Bolig_Commercial + Adresse_Etage + Areal_GarageCarport + Areal_Grund + Areal_Kaelder + Ejd_Altan + Ejd_AntalRum + Ejd_Energimaerke + Salgstid + Salgsmaaned + Dist_skole + Alder + Hoejhus + Dist_raadhus + Sogn + corona, data = home_flat))
+
+ggplot(home_flat, aes(x = home_flat$Areal_Bolig, y = home_flat$Pris_Salg)) + geom_point(size =2,shape = ".",alpha = 0.9) + theme_minimal() + xlab("Area") + ylab("Price") + stat_smooth(method = "lm", formula = y ~ x, geom = "smooth")
